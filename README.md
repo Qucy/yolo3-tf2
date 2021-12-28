@@ -48,7 +48,7 @@ YoloV3 using Darknet53 as it's backbone network and in overall it has 2 main imp
 
 - batch normalization and LeakyReLU: every DarknetConv2D block will followed by a Batch Normalization layer and LeakyReLU layer. The difference between ReLU and LeakyReLU is, LeakyReLU will still have non-zero slope when x is negative.
 
-![LeakyReLU](https://github.com/Qucy/yolo3-tf2/blob/master/img/LeakyReLU.png)
+  ![LeakyReLU](https://github.com/Qucy/yolo3-tf2/blob/master/img/LeakyReLU.png)
 
 DarknetConv2D's source code is as below
 
