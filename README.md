@@ -614,6 +614,44 @@ def preprocess_true_boxes(self, true_boxes, input_shape, anchors, num_classes):
 
 #### 4.2 Calculate loss
 
-After decode prediction result and encode ground truth result then we can start to calculate loss for our model:
+After decode prediction result and encode ground truth result then we can start to calculate loss for our model and in YoloV3 the loss can be divided into 4 parts
 
-- Coming soon
+- For true positive, the difference between predicted bounding box coordinates and true bounding box coordinates, including (x, y) and (w, h)
+- For true positive, the difference between predicted object confidence score and 1
+- For true positive, the cross entropy loss for object classes
+
+
+
+### 5. Train your model
+
+#### 5.1 Prepare your dataset
+
+To train your model you need prepare your datasets first, you can use VOC datasets or COCO datasets to train your model.
+
+For VOC datasets you can download here http://host.robots.ox.ac.uk/pascal/VOC/
+
+For COCO datasets you can download here https://cocodataset.org/#download
+
+But for your own data you need to install a image label tool to label your data first:
+
+You can use pip to install LabelImage and label your own image. link -> https://pypi.org/project/labelImg/
+
+
+
+#### 5.2 Preprocess your dataset
+
+Before to train your model, we need to preprocess our dataset, since the the VOC or COCO dataset's annotation is in XML format. We need to process it via **voc_annotation.py**.  Change your dataset path accordingly and change annotation_mode = 2 to generate train and validation dataset.
+
+After preprocess your dataset successfully you should see 2007_train.txt and 2007_val.txt.
+
+
+
+#### 5.3 Train your model
+
+By using **voc_annotation.py** we've generated our training and testing datasets. By point our train path to these 2 files and we run train.py file to kickoff the training. Of course you can change the hyper parameter in the train.py and the model weights will be saved in logs file every epoch.
+
+
+
+#### 5.4 Make predictions !
+
+After your model is trained, you can modify the model weights file path point to the latest weights file path in the logs folder. And input the image path or folder and run predict.py to trigger the prediction.
