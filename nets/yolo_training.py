@@ -9,7 +9,7 @@ from utils.utils_bbox import get_anchors_and_decode
 def box_iou(b1, b2):
     #---------------------------------------------------#
     #   num_anchor,1,4
-    #   计算左上角的坐标和右下角的坐标
+    #   calculate top left and bottom right coordinates
     #---------------------------------------------------#
     b1          = K.expand_dims(b1, -2)
     b1_xy       = b1[..., :2]
@@ -20,7 +20,7 @@ def box_iou(b1, b2):
 
     #---------------------------------------------------#
     #   1,n,4
-    #   计算左上角和右下角的坐标
+    #   calculate top left and bottom right coordinates
     #---------------------------------------------------#
     b2          = K.expand_dims(b2, 0)
     b2_xy       = b2[..., :2]
@@ -30,7 +30,7 @@ def box_iou(b1, b2):
     b2_maxes    = b2_xy + b2_wh_half
 
     #---------------------------------------------------#
-    #   计算重合面积
+    #   calculate IOU
     #---------------------------------------------------#
     intersect_mins  = K.maximum(b1_mins, b2_mins)
     intersect_maxes = K.minimum(b1_maxes, b2_maxes)
@@ -43,17 +43,17 @@ def box_iou(b1, b2):
     return iou
 
 #---------------------------------------------------#
-#   loss值计算
+#   loss function
 #---------------------------------------------------#
 def yolo_loss(args, input_shape, anchors, anchors_mask, num_classes, ignore_thresh=.5, print_loss=False):
     num_layers = len(anchors_mask)
     #---------------------------------------------------------------------------------------------------#
-    #   将预测结果和实际ground truth分开，args是[*model_body.output, *y_true]
-    #   y_true是一个列表，包含三个特征层，shape分别为:
+    #   split predictions and ground truth, args is list contains [*model_body.output, *y_true]
+    #   y_true is a list，contains 3 feature maps，shape are:
     #   (m,13,13,3,85)
     #   (m,26,26,3,85)
     #   (m,52,52,3,85)
-    #   yolo_outputs是一个列表，包含三个特征层，shape分别为:
+    #   yolo_outputs is a list，contains 3 feature maps，shape are:
     #   (m,13,13,3,85)
     #   (m,26,26,3,85)
     #   (m,52,52,3,85)
@@ -62,138 +62,130 @@ def yolo_loss(args, input_shape, anchors, anchors_mask, num_classes, ignore_thre
     yolo_outputs    = args[:num_layers]
 
     #-----------------------------------------------------------#
-    #   得到input_shpae为416,416 
+    #   input_shpae = (416, 416)
     #-----------------------------------------------------------#
     input_shape = K.cast(input_shape, K.dtype(y_true[0]))
     #-----------------------------------------------------------#
-    #   得到网格的shape为[13,13]; [26,26]; [52,52]
+    #   grid shapes  = [[13,13], [26,26], [52,52]]
     #-----------------------------------------------------------#
     grid_shapes = [K.cast(K.shape(yolo_outputs[l])[1:3], K.dtype(y_true[0])) for l in range(num_layers)]
 
     #-----------------------------------------------------------#
-    #   取出每一张图片
-    #   m的值就是batch_size
+    #   m = batch_size = number of images
     #-----------------------------------------------------------#
     m = K.shape(yolo_outputs[0])[0]
 
     loss    = 0
     num_pos = 0
     #---------------------------------------------------------------------------------------------------#
-    #   y_true是一个列表，包含三个特征层，shape分别为(m,13,13,3,85),(m,26,26,3,85),(m,52,52,3,85)。
-    #   yolo_outputs是一个列表，包含三个特征层，shape分别为(m,13,13,3,85),(m,26,26,3,85),(m,52,52,3,85)。
+    #   y_true is a list，contains 3 feature maps，shape are: (m,13,13,3,85),(m,26,26,3,85),(m,52,52,3,85)
+    #   yolo_outputs is a list，contains 3 feature maps，shape are:(m,13,13,3,85),(m,26,26,3,85),(m,52,52,3,85)
     #---------------------------------------------------------------------------------------------------#
     for l in range(num_layers):
         #-----------------------------------------------------------#
-        #   以第一个特征层(m,13,13,3,85)为例子
-        #   取出该特征层中存在目标的点的位置。(m,13,13,3,1)
+        #   Here take fist feature map as example (m,13,13,3,85)
+        #   Retrieve object score from last dim with shape => (m,13,13,3,1)
         #-----------------------------------------------------------#
         object_mask = y_true[l][..., 4:5]
         #-----------------------------------------------------------#
-        #   取出其对应的种类(m,13,13,3,80)
+        #   Retrieve object category from last dim with shape => (m,13,13,3,80)
         #-----------------------------------------------------------#
         true_class_probs = y_true[l][..., 5:]
 
         #-----------------------------------------------------------#
-        #   将yolo_outputs的特征层输出进行处理、获得四个返回值
-        #   其中：
-        #   grid        (13,13,1,2) 网格坐标
-        #   raw_pred    (m,13,13,3,85) 尚未处理的预测结果
-        #   pred_xy     (m,13,13,3,2) 解码后的中心坐标
-        #   pred_wh     (m,13,13,3,2) 解码后的宽高坐标
+        #   decode Yolo predictions will return below 4 matrix as below:
+        #   grid        (13,13,1,2) grid coordinates
+        #   raw_pred    (m,13,13,3,85) raw prediction
+        #   pred_xy     (m,13,13,3,2) decode box center point x and y
+        #   pred_wh     (m,13,13,3,2) decode width and height
         #-----------------------------------------------------------#
         grid, raw_pred, pred_xy, pred_wh = get_anchors_and_decode(yolo_outputs[l],
              anchors[anchors_mask[l]], num_classes, input_shape, calc_loss=True)
         
         #-----------------------------------------------------------#
-        #   pred_box是解码后的预测的box的位置
-        #   (m,13,13,3,4)
+        #   concat predicted xy and wh to shape => (m,13,13,3,4)
         #-----------------------------------------------------------#
         pred_box = K.concatenate([pred_xy, pred_wh])
 
         #-----------------------------------------------------------#
-        #   找到负样本群组，第一步是创建一个数组，[]
+        #   create a dynamic array to save negative samples
         #-----------------------------------------------------------#
         ignore_mask = tf.TensorArray(K.dtype(y_true[0]), size=1, dynamic_size=True)
         object_mask_bool = K.cast(object_mask, 'bool')
         
         #-----------------------------------------------------------#
-        #   对每一张图片计算ignore_mask
+        #   define a inner function to locate ignored samples
         #-----------------------------------------------------------#
         def loop_body(b, ignore_mask):
             #-----------------------------------------------------------#
-            #   取出n个真实框：n,4
+            #  retrieve ground truth's bounding box's coordinates (x,y) and (w,h)=> shape (n, 4)
             #-----------------------------------------------------------#
             true_box = tf.boolean_mask(y_true[l][b,...,0:4], object_mask_bool[b,...,0])
             #-----------------------------------------------------------#
-            #   计算预测框与真实框的iou
-            #   pred_box    13,13,3,4 预测框的坐标
-            #   true_box    n,4 真实框的坐标
-            #   iou         13,13,3,n 预测框和真实框的iou
+            #   calculate iou
+            #   pred_box shape => (13,13,3,4)
+            #   true_box shape => (n,4)
+            #   iou between predicted box and true box, shape => (13,13,3,n)
             #-----------------------------------------------------------#
             iou = box_iou(pred_box[b], true_box)
 
             #-----------------------------------------------------------#
-            #   best_iou    13,13,3 每个特征点与真实框的最大重合程度
+            #   best_iou shape => (13,13,3) means best iou for every anchor
             #-----------------------------------------------------------#
             best_iou = K.max(iou, axis=-1)
 
             #-----------------------------------------------------------#
-            #   判断预测框和真实框的最大iou小于ignore_thresh
-            #   则认为该预测框没有与之对应的真实框
-            #   该操作的目的是：
-            #   忽略预测结果与真实框非常对应特征点，因为这些框已经比较准了
-            #   不适合当作负样本，所以忽略掉。
+            #   if best iou less than ignore threshold treat it as ignored sample
+            #   add to ignore mask for calculate no object loss latter
+            #   if best iou is greater or equal than ignore threshold, we think it's
+            #   close to the true box will not treat it as a ignored sample
             #-----------------------------------------------------------#
             ignore_mask = ignore_mask.write(b, K.cast(best_iou<ignore_thresh, K.dtype(true_box)))
             return b+1, ignore_mask
 
         #-----------------------------------------------------------#
-        #   在这个地方进行一个循环、循环是对每一张图片进行的
+        #   call while loop to find out ignored samples in every images one by one
         #-----------------------------------------------------------#
         _, ignore_mask = tf.while_loop(lambda b,*args: b<m, loop_body, [0, ignore_mask])
 
         #-----------------------------------------------------------#
-        #   ignore_mask用于提取出作为负样本的特征点
-        #   (m,13,13,3)
+        #   ignore_mask shape => (m,13,13,3)
         #-----------------------------------------------------------#
         ignore_mask = ignore_mask.stack()
-        #   (m,13,13,3,1)
+        #  (m,13,13,3) =>  (m,13,13,3,1)
         ignore_mask = K.expand_dims(ignore_mask, -1)
 
         #-----------------------------------------------------------#
-        #   将真实框进行编码，使其格式与预测的相同，后面用于计算loss
+        #   normalize true xy and wh to align with predicted xy and wh for calculate loss latter
         #-----------------------------------------------------------#
         raw_true_xy = y_true[l][..., :2] * grid_shapes[l][::-1] - grid
         raw_true_wh = K.log(y_true[l][..., 2:4] / anchors[anchors_mask[l]] * input_shape[::-1])
 
         #-----------------------------------------------------------#
-        #   object_mask如果真实存在目标则保存其wh值
-        #   switch接口，就是一个if/else条件判断语句
+        #   update raw_true_wh if no object update wh to 0 otherwise remain it as before
         #-----------------------------------------------------------#
         raw_true_wh = K.switch(object_mask, raw_true_wh, K.zeros_like(raw_true_wh))
         #-----------------------------------------------------------#
-        #   reshape_y_true[...,2:3]和reshape_y_true[...,3:4]
-        #   表示真实框的宽高，二者均在0-1之间
-        #   真实框越大，比重越小，小框的比重更大。
+        #  calculate box loss scale, x and y both between 0-1
+        #  if real box is bigger box_loss_scale will become smaller
+        #  if real box is smaller box_loss_scale will become larger
+        #  to make sure big box and smaller box to have almost same loss value
         #-----------------------------------------------------------#
         box_loss_scale = 2 - y_true[l][...,2:3]*y_true[l][...,3:4]
 
         #-----------------------------------------------------------#
-        #   利用binary_crossentropy计算中心点偏移情况，效果更好
+        #   use binary_crossentropy calculate xy loss
         #-----------------------------------------------------------#
         xy_loss = object_mask * box_loss_scale * K.binary_crossentropy(raw_true_xy, raw_pred[...,0:2], from_logits=True)
         #-----------------------------------------------------------#
-        #   wh_loss用于计算宽高损失
+        #   calculate wh_loss
         #-----------------------------------------------------------#
         wh_loss = object_mask * box_loss_scale * 0.5 * K.square(raw_true_wh-raw_pred[...,2:4])
         
         #------------------------------------------------------------------------------#
-        #   如果该位置本来有框，那么计算1与置信度的交叉熵
-        #   如果该位置本来没有框，那么计算0与置信度的交叉熵
-        #   在这其中会忽略一部分样本，这些被忽略的样本满足条件best_iou<ignore_thresh
-        #   该操作的目的是：
-        #   忽略预测结果与真实框非常对应特征点，因为这些框已经比较准了
-        #   不适合当作负样本，所以忽略掉。
+        #   if there is true box，calculate cross entropy loss between predicted score and 1
+        #   if there no box，calculate cross entropy loss between predicted score and 0
+        #   and will ignore the samples if best_iou<ignore_thresh
         #------------------------------------------------------------------------------#
         confidence_loss = object_mask * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True) + \
             (1 - object_mask) * K.binary_crossentropy(object_mask, raw_pred[...,4:5], from_logits=True) * ignore_mask
@@ -201,14 +193,14 @@ def yolo_loss(args, input_shape, anchors, anchors_mask, num_classes, ignore_thre
         class_loss = object_mask * K.binary_crossentropy(true_class_probs, raw_pred[...,5:], from_logits=True)
 
         #-----------------------------------------------------------#
-        #   将所有损失求和
+        #   sum up loss
         #-----------------------------------------------------------#
         xy_loss         = K.sum(xy_loss)
         wh_loss         = K.sum(wh_loss)
         confidence_loss = K.sum(confidence_loss)
         class_loss      = K.sum(class_loss)
         #-----------------------------------------------------------#
-        #   计算正样本数量
+        #   add up all the loss
         #-----------------------------------------------------------#
         num_pos += tf.maximum(K.sum(K.cast(object_mask, tf.float32)), 1)
         loss    += xy_loss + wh_loss + confidence_loss + class_loss

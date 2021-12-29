@@ -1,6 +1,5 @@
 ## YoloV3 - an object detection algorithm implemented via TF 2.x
 
-###### [source code](https://github.com/Qucy/yolo3-tf2)
 
 In this article I assume you've already familiar with basic computer vision knowledge like convolutional layers, pooling layers, residual blocks, Yolov1 and YoloV2 (Yolo 9000).
 
@@ -614,11 +613,11 @@ def preprocess_true_boxes(self, true_boxes, input_shape, anchors, num_classes):
 
 #### 4.2 Calculate loss
 
-After decode prediction result and encode ground truth result then we can start to calculate loss for our model and in YoloV3 the loss can be divided into 4 parts
+After decode prediction result and encode ground truth result then we can start to calculate loss for our model and in YoloV3 the loss can be divided into 3 parts
 
-- For true positive, the difference between predicted bounding box coordinates and true bounding box coordinates, including (x, y) and (w, h)
-- For true positive, the difference between predicted object confidence score and 1
-- For true positive, the cross entropy loss for object classes
+- Coordinate loss, for true positive calculate MSE loss between predicted bounding box coordinates and true bounding box coordinates, including (x, y) and (w, h)
+- Object loss, for true positive the calculate BCE loss between predicted object confidence score and 1，for false positive calculate BCE loss between predicted object confidence score and 0.
+- Object category loss, calculate the cross entropy loss for object classes
 
 
 
